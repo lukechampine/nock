@@ -1,5 +1,5 @@
 // Package nock implements a simple Nock interpreter, according the spec
-// available at https://urbit.org/docs/nock/definition
+// available at https://urbit.org/docs/tutorials/nock/definition/.
 //
 // This interpreter assumes that its input is well-formed, and does not
 // support atoms larger than a machine int.
@@ -66,56 +66,175 @@ func fas(i int, n Noun) Noun {
 	}
 }
 
-func tar(sub, form Noun) Noun {
-	if form.Head().IsCell() {
-		return Cell(tar(sub, form.Head()), tar(sub, form.Tail()))
+func hax(i int, n Noun) Noun {
+	// #[1 a b]            a
+	if i == 1 {
+		return n.Head()
 	}
-	inst, arg := form.Head(), form.Tail()
-	return map[int]func() Noun{
-		// *[a 0 b]             /[b a]
-		0: func() Noun { return fas(arg.Num(), sub) },
-		// *[a 1 b]             b
-		1: func() Noun { return arg },
-		// *[a 2 b c]           *[*[a b] *[a c]]
-		2: func() Noun { return tar(tar(sub, arg.Head()), tar(sub, arg.Tail())) },
-		// *[a 3 b]             ?*[a b]
-		3: func() Noun { return wut(tar(sub, arg)) },
-		// *[a 4 b]             +*[a b]
-		4: func() Noun { return lus(tar(sub, arg)) },
-		// *[a 5 b]             =*[a b]
-		5: func() Noun { return tis(tar(sub, arg)) },
-		// *[a 6 b c d]         *[a 2 [0 1] 2 [1 c d] [1 0] 2 [1 2 3] [1 0] 4 4 b]
-		6: func() Noun {
-			if tar(sub, arg.Head()).Num() == 0 {
-				return tar(sub, fas(6, arg))
-			}
-			return tar(sub, fas(7, arg))
-		},
-		// *[a 7 b c]           *[a 2 b 1 c]
-		7: func() Noun { return tar(tar(sub, arg.Head()), arg.Tail()) },
-		// *[a 8 b c]           *[a 7 [[7 [0 1] b] 0 1] c]
-		8: func() Noun { return tar(Cell(tar(sub, arg.Head()), sub), arg.Tail()) },
-		// *[a 9 b c]            *[a 7 c [2 [0 1] [0 b]]]
-		9: func() Noun {
-			d := tar(sub, arg.Tail())
-			return tar(d, fas(arg.Head().Num(), d))
-		},
-		// *[a 10 b c]          *[a c]
-		10: func() Noun {
-			if b := arg.Head(); b.IsCell() {
-				_ = tar(sub, b.Tail())
-			}
-			return tar(sub, arg.Tail())
-		},
-	}[inst.Num()]()
+
+	a := i / 2
+	b := n.Head()
+	c := n.Tail()
+	if i%2 == 0 {
+		// #[(a + a) b c]      #[a [b /[(a + a + 1) c]] c]
+		return hax(a, Cell(Cell(b, fas(a+a+1, c)), c))
+	} else {
+		// #[(a + a + 1) b c]  #[a [/[(a + a) c] b] c]
+		return hax(a, Cell(Cell(fas(a+a, c), b), c))
+	}
 }
 
-// Nock evaluates the nock function on n.
-func Nock(n Noun) Noun {
-	if n.IsAtom() || n.Tail().IsAtom() {
-		return n
+func tar5(sub, form Noun) Noun {
+	// Distribution rule.
+	// *[a [b c] d]        [*[a b c] *[a d]]
+	if form.Head().IsCell() {
+		return Cell(tar5(sub, form.Head()), tar5(sub, form.Tail()))
 	}
-	return tar(n.Head(), n.Tail())
+	inst, arg := form.Head(), form.Tail()
+	switch inst.Num() {
+	case 0:
+		// Read memory slot.
+		// *[a 0 b]             /[b a]
+		return fas(arg.Num(), sub)
+	case 1:
+		// Quote.
+		// *[a 1 b]             b
+		return arg
+	case 2:
+		// Change subject.
+		// *[a 2 b c]           *[*[a b] *[a c]]
+		return tar5(tar5(sub, arg.Head()), tar5(sub, arg.Tail()))
+	case 3:
+		// Cell test.
+		// *[a 3 b]             ?*[a b]
+		return wut(tar5(sub, arg))
+	case 4:
+		// Increment.
+		// *[a 4 b]             +*[a b]
+		return lus(tar5(sub, arg))
+	case 5:
+		// Equality test.
+		// *[a 5 b]             =*[a b]
+		return tis(Cell(tar5(sub, arg.Head()), tar5(sub, arg.Tail())))
+	case 6:
+		// If/else.
+		// *[a 6 b c d]         *[a 2 [0 1] 2 [1 c d] [1 0] 2 [1 2 3] [1 0] 4 4 b]
+		if tar5(sub, arg.Head()).Num() == 0 {
+			return tar5(sub, fas(6, arg))
+		}
+		return tar5(sub, fas(7, arg))
+	case 7:
+		// Compose.
+		// *[a 7 b c]           *[a 2 b 1 c]
+		return tar5(tar5(sub, arg.Head()), arg.Tail())
+	case 8:
+		// Add value to head of subject.
+		// *[a 8 b c]           *[a 7 [[7 [0 1] b] 0 1] c]
+		return tar5(Cell(tar5(sub, arg.Head()), sub), arg.Tail())
+	case 9:
+		// Create a core and run one of its arms.
+		// *[a 9 b c]           *[a 7 c 2 [0 1] 0 b]
+		d := tar5(sub, arg.Tail())
+		return tar5(d, fas(arg.Head().Num(), d))
+	case 10:
+		// Hints.
+		// *[a 10 [b c] d]      *[a 8 c 7 [0 3] d]
+		// *[a 10 b c]          *[a c]
+		if b := arg.Head(); b.IsCell() {
+			_ = tar5(sub, b.Tail())
+		}
+		return tar5(sub, arg.Tail())
+	default:
+		panic("Invalid instruction " + strconv.Itoa(inst.Num()))
+	}
+}
+
+// Nock5 evaluates the nock function on n using Nock 5.
+func Nock5(n Noun) Noun {
+	return tar5(n.Head(), n.Tail())
+}
+
+func tar4(sub, form Noun) Noun {
+	// Distribution rule.
+	// *[a [b c] d]        [*[a b c] *[a d]]
+	if form.Head().IsCell() {
+		return Cell(tar4(sub, form.Head()), tar4(sub, form.Tail()))
+	}
+	inst, arg := form.Head(), form.Tail()
+	switch inst.Num() {
+	case 0:
+		// Read memory slot.
+		// *[a 0 b]             /[b a]
+		return fas(arg.Num(), sub)
+	case 1:
+		// Quote.
+		// *[a 1 b]             b
+		return arg
+	case 2:
+		// Change subject.
+		// *[a 2 b c]           *[*[a b] *[a c]]
+		return tar4(tar4(sub, arg.Head()), tar4(sub, arg.Tail()))
+	case 3:
+		// Cell test.
+		// *[a 3 b]             ?*[a b]
+		return wut(tar4(sub, arg))
+	case 4:
+		// Increment.
+		// *[a 4 b]             +*[a b]
+		return lus(tar4(sub, arg))
+	case 5:
+		// Equality test.
+		// *[a 5 b c]           =[*[a b] *[a c]]
+		return tis(Cell(tar4(sub, arg.Head()), tar4(sub, arg.Tail())))
+	case 6:
+		// If/else.
+		// *[a 6 b c d]         *[a *[[c d] 0 *[[2 3] 0 *[a 4 4 b]]]]
+		if tar4(sub, arg.Head()).Num() == 0 {
+			return tar4(sub, fas(6, arg))
+		}
+		return tar4(sub, fas(7, arg))
+	case 7:
+		// Compose.
+		// *[a 7 b c]           *[*[a b] c]
+		return tar4(tar4(sub, arg.Head()), arg.Tail())
+	case 8:
+		// Add value to head of subject.
+		// *[a 8 b c]           *[[*[a b] a] c]
+		return tar4(Cell(tar4(sub, arg.Head()), sub), arg.Tail())
+	case 9:
+		// Create a core and run one of its arms.
+		// *[a 9 b c]           *[*[a c] 2 [0 1] 0 b]
+		d := tar4(sub, arg.Tail())
+		return tar4(d, fas(arg.Head().Num(), d))
+	case 10:
+		// Replace memory slot.
+		// *[a 10 [b c] d]      #[b *[a c] *[a d]]
+		b := arg.Head().Head()
+		c := arg.Head().Tail()
+		d := arg.Tail()
+		return hax(b.Num(), Cell(tar4(sub, c), tar4(sub, d)))
+	case 11:
+		// Hints.
+		// *[a 11 [b c] d]      *[[*[a c] *[a d]] 0 3]
+		// *[a 11 b c]          *[a c]
+		if b := arg.Head(); b.IsCell() {
+			_ = tar4(sub, b.Tail())
+		}
+		return tar4(sub, arg.Tail())
+	default:
+		panic("Invalid instruction " + strconv.Itoa(inst.Num()))
+	}
+}
+
+// Nock4 evaluates the nock function on n using Nock 4.
+func Nock4(n Noun) Noun {
+	return tar4(n.Head(), n.Tail())
+}
+
+// Nock evaluates the nock function on n using the latest Nock version.
+func Nock(n Noun) Noun {
+	// With Kelvin versioning the smallest number is the latest.
+	return Nock4(n)
 }
 
 // Parse parses a Nock program.
