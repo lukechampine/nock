@@ -121,9 +121,6 @@ func tar(sub, form Noun) Noun {
 
 // Nock evaluates the nock function on n.
 func Nock(n Noun) Noun {
-	if n.IsAtom() || n.Tail().IsAtom() {
-		return n
-	}
 	return tar(n.Head(), n.Tail())
 }
 
