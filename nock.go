@@ -66,10 +66,10 @@ func fas(i int, n Noun) Noun {
 	}
 }
 
-func tar(sub, form Noun) Noun {
+func tar5(sub, form Noun) Noun {
 	// *[a [b c] d]        [*[a b c] *[a d]]
 	if form.Head().IsCell() {
-		return Cell(tar(sub, form.Head()), tar(sub, form.Tail()))
+		return Cell(tar5(sub, form.Head()), tar5(sub, form.Tail()))
 	}
 	inst, arg := form.Head(), form.Tail()
 	switch inst.Num() {
@@ -81,47 +81,52 @@ func tar(sub, form Noun) Noun {
 		return arg
 	case 2:
 		// *[a 2 b c]           *[*[a b] *[a c]]
-		return tar(tar(sub, arg.Head()), tar(sub, arg.Tail()))
+		return tar5(tar5(sub, arg.Head()), tar5(sub, arg.Tail()))
 	case 3:
 		// *[a 3 b]             ?*[a b]
-		return wut(tar(sub, arg))
+		return wut(tar5(sub, arg))
 	case 4:
 		// *[a 4 b]             +*[a b]
-		return lus(tar(sub, arg))
+		return lus(tar5(sub, arg))
 	case 5:
 		// *[a 5 b]             =*[a b]
-		return tis(Cell(tar(sub, arg.Head()), tar(sub, arg.Tail())))
+		return tis(Cell(tar5(sub, arg.Head()), tar5(sub, arg.Tail())))
 	case 6:
 		// *[a 6 b c d]         *[a 2 [0 1] 2 [1 c d] [1 0] 2 [1 2 3] [1 0] 4 4 b]
-		if tar(sub, arg.Head()).Num() == 0 {
-			return tar(sub, fas(6, arg))
+		if tar5(sub, arg.Head()).Num() == 0 {
+			return tar5(sub, fas(6, arg))
 		}
-		return tar(sub, fas(7, arg))
+		return tar5(sub, fas(7, arg))
 	case 7:
 		// *[a 7 b c]           *[a 2 b 1 c]
-		return tar(tar(sub, arg.Head()), arg.Tail())
+		return tar5(tar5(sub, arg.Head()), arg.Tail())
 	case 8:
 		// *[a 8 b c]           *[a 7 [[7 [0 1] b] 0 1] c]
-		return tar(Cell(tar(sub, arg.Head()), sub), arg.Tail())
+		return tar5(Cell(tar5(sub, arg.Head()), sub), arg.Tail())
 	case 9:
 		// *[a 9 b c]           *[a 7 c 2 [0 1] 0 b]
-		d := tar(sub, arg.Tail())
-		return tar(d, fas(arg.Head().Num(), d))
+		d := tar5(sub, arg.Tail())
+		return tar5(d, fas(arg.Head().Num(), d))
 	case 10:
 		// *[a 10 [b c] d]      *[a 8 c 7 [0 3] d]
 		// *[a 10 b c]          *[a c]
 		if b := arg.Head(); b.IsCell() {
-			_ = tar(sub, b.Tail())
+			_ = tar5(sub, b.Tail())
 		}
-		return tar(sub, arg.Tail())
+		return tar5(sub, arg.Tail())
 	default:
 		panic("Invalid instruction " + strconv.Itoa(inst.Num()))
 	}
 }
 
+// Nock5 evaluates the nock function on n using Nock 5.
+func Nock5(n Noun) Noun {
+	return tar5(n.Head(), n.Tail())
+}
+
 // Nock evaluates the nock function on n.
 func Nock(n Noun) Noun {
-	return tar(n.Head(), n.Tail())
+	return Nock5(n)
 }
 
 // Parse parses a Nock program.
